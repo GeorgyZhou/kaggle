@@ -1,16 +1,21 @@
 import tensorflow as tf
 import pandas as pd
 
-TRAIN_DATA_FILE_PATH = "data/train.csv"
-TEST_DATA_FILE_PATH = "data/test.csv"
+TRAIN_DATA_FILE_PATH = "/data/kaggle/digit_recognizer/train.csv"
+TEST_DATA_FILE_PATH = "/data/kaggle/digit_recognizer/test.csv"
 
-def _load_data():
+
+def prepare_datasets():
     train_df = pd.read_csv(TRAIN_DATA_FILE_PATH)
     test_df = pd.read_csv(TEST_DATA_FILE_PATH)
-    print(train_df.head())
+    label = train_df.pop("label")
+    train_dataset = tf.data.Dataset.from_tensor_slices((train_df.values / 255.0, label.values))
+    train_rows = len(test_df)
+    test_dataset = tf.data.Dataset.from_tensor_slices(test_df.values / 255.0)
+    return train_dataset, test_dataset, train_rows
 
 
-def _get_train_strategy():
+def get_train_strategy():
     print("Tensorflow version: " + tf.__version__)
     # Detect hardware
     try:
@@ -37,36 +42,34 @@ def _get_train_strategy():
     print("Number of accelerators: ", strategy.num_replicas_in_sync)
     return strategy
 
-def train():
-    strategy = _get_train_strategy()
-    with strategy.scope():
-        mnist = tf.keras.datasets.mnist
 
-        (x_train, y_train), (x_test, y_test) = mnist.load_data()
-        x_train, x_test = x_train / 255.0, x_test / 255.0
+def train(train_dataset, row_count):
+    train_dataset = train_dataset.shuffle(row_count).batch(1)
+    model = tf.keras.models.Sequential([
+        tf.keras.layers.Flatten(input_shape=(784, 1)),
+        tf.keras.layers.Dense(128, activation='relu'),
+        tf.keras.layers.Dropout(0.2),
+        tf.keras.layers.Dense(10, activation="softmax")])
 
-        model = tf.keras.models.Sequential([
-            tf.keras.layers.Flatten(input_shape=(28, 28)),
-            tf.keras.layers.Dense(128, activation='relu'),
-            tf.keras.layers.Dropout(0.2),
-            tf.keras.layers.Dense(10)])
+    model.compile(optimizer='adam',
+                  loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True,
+                                                                     reduction=tf.keras.losses.Reduction.SUM),
+                  metrics=['accuracy'])
 
-        predictions = model(x_train[:1]).numpy()
+    model.fit(train_dataset, epochs=1)
+    return model
 
-        tf.nn.softmax(predictions).numpy()
 
-        loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True,
-                                                                reduction=tf.keras.losses.Reduction.NONE)
-        loss_fn(y_train[:1], predictions).numpy()
+def predict(model, test_dataset):
+    predictions = model.predict(test_dataset)
+    print("===== Predictions =====")
+    print(predictions)
 
-        model.compile(optimizer='adam',
-                      loss=loss_fn,
-                      metrics=['accuracy'])
-
-        model.fit(x_train, y_train, epochs=5)
-
-        model.evaluate(x_test, y_test, verbose=2)
 
 if __name__ == "__main__":
-    # train()
-    _load_data()
+    train_ds, test_ds, train_rows = prepare_datasets()
+    print(test_ds.element_spec)
+    train_strategy = get_train_strategy()
+    with train_strategy.scope():
+        trained_model = train(train_ds, train_rows)
+        # predict(trained_model, test_ds)
