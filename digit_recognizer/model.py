@@ -1,11 +1,12 @@
 import csv
+import datetime
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 
 TRAIN_DATA_FILE_PATH = "/data/kaggle/digit_recognizer/train.csv"
 TEST_DATA_FILE_PATH = "/data/kaggle/digit_recognizer/test.csv"
-OUTPUT_FILE_PATH = "/data/kaggle/digit_recognizer/output"
+OUTPUT_FILE_PATH = "/data/kaggle/digit_recognizer/predictions.csv"
 
 
 def prepare_datasets():
@@ -52,6 +53,7 @@ def train(train_dataset, sample_count):
     model = tf.keras.models.Sequential([
         tf.keras.layers.Flatten(input_shape=(784, 1), dtype='float64'),
         tf.keras.layers.Dense(128, activation='relu', dtype='float64'),
+        tf.keras.layers.Dense(256, activation='relu', dtype='float64'),
         tf.keras.layers.Dropout(0.2, dtype='float64'),
         tf.keras.layers.Dense(10, activation="softmax", dtype='float64')])
 
@@ -60,7 +62,7 @@ def train(train_dataset, sample_count):
                                                                      reduction=tf.keras.losses.Reduction.SUM),
                   metrics=['accuracy'])
 
-    model.fit(train_dataset, epochs=10)
+    model.fit(train_dataset, epochs=50)
     return model
 
 
@@ -82,11 +84,11 @@ def output_results(output_path, predictions):
 
 
 if __name__ == "__main__":
+    begin_time = datetime.datetime.now()
     train_ds, test_ds, train_count = prepare_datasets()
-    print(test_ds.element_spec)
-    print(train_ds.element_spec)
     train_strategy = get_train_strategy()
     with train_strategy.scope():
         trained_model = train(train_ds, train_count)
         results = predict_class(trained_model, test_ds)
         output_results(OUTPUT_FILE_PATH, results)
+    print("Total running time: " + str(datetime.datetime.now() - begin_time))
